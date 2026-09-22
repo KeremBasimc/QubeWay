@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description"
+        content="Qube Way - 3D arrow puzzle. Rotate the cube, tap arrows in the right order and clear all six sides!">
+    <title>Qube Way</title>
+    <meta name="theme-color" content="#5b5ce2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Qube Way">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- 3D scene (always behind the UI) -->
+    <canvas id="scene"></canvas>
+
+    <!-- ═══════════════════════════════════════
+         MAIN MENU
+    ═══════════════════════════════════════ -->
+    <div id="main-menu">
+        <button class="icon-btn menu-settings" id="menu-settings-btn" aria-label="Settings">⚙</button>
+
+        <div class="menu-inner">
+            <div class="menu-logo-wrap">
+                <div class="logo-scene">
+                    <div class="logo-cube">
+                        <div class="lc-face lc-front">➜</div>
+                        <div class="lc-face lc-back">➜</div>
+                        <div class="lc-face lc-right">⬆</div>
+                        <div class="lc-face lc-left">⬇</div>
+                        <div class="lc-face lc-top">⬅</div>
+                        <div class="lc-face lc-bottom">➜</div>
+                    </div>
+                </div>
+                <h1 class="menu-title">Qube <span>Way</span></h1>
+                <p class="menu-tagline">Rotate &nbsp;·&nbsp; Tap &nbsp;·&nbsp; Clear</p>
+            </div>
+
+            <div class="menu-best-card">
+                <div class="menu-best-label">LEVEL</div>
+                <div class="menu-best-value" id="menu-level">1</div>
+                <div class="menu-stars" id="menu-stars"></div>
+            </div>
+
+            <div class="menu-coins-pill">
+                <span class="coin-icon">●</span>
+                <span id="menu-coins">0</span>
+                <span class="menu-coins-label">coins</span>
+            </div>
+
+            <button id="play-btn" class="play-btn">▶&nbsp;&nbsp;PLAY</button>
+            <button id="restart-level-link" class="new-game-link hidden">Restart this level</button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         GAME HUD
+    ═══════════════════════════════════════ -->
+    <div id="hud" class="hidden">
+        <div class="hud-bar" id="hud-bar">
+            <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙</button>
+            <div class="hud-stars" id="hud-stars">
+                <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+            </div>
+            <div class="hud-level" id="hud-level">Level 1</div>
+        </div>
+        <div class="hud-sub">
+            <div class="hud-counter" id="hud-counter"><span class="arrow-glyph">⬆</span><span id="arrows-left">0</span></div>
+            <div class="hud-badge hidden" id="hud-badge">HARD</div>
+        </div>
+
+        <div class="hud-bottom">
+            <div class="hud-coins"><span class="coin-icon">●</span><span id="hud-coins">0</span></div>
+            <button class="hint-btn" id="hint-btn">💡 Hint <span class="hint-cost" id="hint-cost">20</span></button>
+            <button class="icon-btn" id="reset-view-btn" aria-label="Reset view">⟲</button>
+        </div>
+
+        <div id="tutorial" class="tutorial hidden">
+            <div class="tut-line">👆 Tap an arrow to slide it off the cube</div>
+            <div class="tut-line">✋ Drag to rotate &nbsp;·&nbsp; pinch / scroll to zoom</div>
+            <div class="tut-line small">Blocked arrows cost a star — look before you tap!</div>
+        </div>
+    </div>
+
+    <!-- Praise word -->
+    <div id="praise" class="hidden"><span id="praise-text"></span></div>
+
+    <!-- ═══════════════════════════════════════
+         LEVEL COMPLETE
+    ═══════════════════════════════════════ -->
+    <div id="win-overlay" class="overlay hidden">
+        <div class="card">
+            <h2>Level Complete!</h2>
+            <div class="result-stars" id="win-stars">
+                <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+            </div>
+            <p class="card-sub" id="win-level">Level 1</p>
+            <p class="coins-earned" id="win-coins">+10 coins</p>
+            <div class="card-buttons">
+                <button class="btn-primary" id="next-btn">▶ Next Level</button>
+                <button class="btn-ghost" id="win-menu-btn">⌂ Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         OUT OF STARS
+    ═══════════════════════════════════════ -->
+    <div id="fail-overlay" class="overlay hidden">
+        <div class="card">
+            <h2>Out of Stars!</h2>
+            <p class="card-sub">Too many arrows crashed.</p>
+            <p class="fail-left" id="fail-left">12 arrows left</p>
+            <button id="revive-btn" class="revive-btn hidden">♥ Continue</button>
+            <div class="card-buttons">
+                <button class="btn-primary" id="retry-btn">⟲ Retry</button>
+                <button class="btn-ghost" id="fail-menu-btn">⌂ Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SETTINGS PANEL
+    ═══════════════════════════════════════ -->
+    <div id="settings-panel" class="hidden">
+        <div class="settings-backdrop" id="settings-backdrop"></div>
+        <div class="settings-drawer" id="settings-drawer">
+            <div class="settings-head">
+                <h2>Settings</h2>
+                <button id="settings-close" aria-label="Close settings">✕</button>
+            </div>
+
+            <p class="settings-section-label">🔊 Audio</p>
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-name">Sound Effects</span>
+                    <span class="setting-desc">Slides, crashes &amp; wins</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-sfx" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <p class="settings-section-label">📱 Gameplay</p>
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-name">Haptic Feedback</span>
+                    <span class="setting-desc">Vibration on key moments</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-haptic" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <p class="settings-section-label">🏠 Navigation</p>
+            <button id="settings-restart-btn" class="settings-menu-btn">⟲&nbsp;&nbsp;Restart Level</button>
+            <button id="settings-menu-btn" class="settings-menu-btn">⌂&nbsp;&nbsp;Main Menu</button>
+
+            <div class="settings-footer">
+                <span class="settings-version">Qube Way v1.0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         DAILY REWARD POPUP
+    ═══════════════════════════════════════ -->
+    <div id="daily-popup" class="overlay hidden">
+        <div class="card daily-card">
+            <div class="daily-emoji">🎁</div>
+            <h2>Daily Reward!</h2>
+            <p class="daily-streak" id="daily-streak">Day 1 streak</p>
+            <p class="coins-earned" id="daily-reward-amt">+50 coins</p>
+            <button class="btn-primary" id="daily-close">Collect</button>
+        </div>
+    </div>
+
+    <script type="module" src="game.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+
+</html>
