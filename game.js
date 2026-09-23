@@ -3,7 +3,7 @@
    ========================================= */
 
 import * as THREE from './lib/three.module.min.js';
-import { Board, stepWrap } from './puzzle.js';
+import { Board, stepWrap, GEN_VERSION } from './puzzle.js';
 
 // ── Constants ──────────────────────────────
 const MAX_STARS = 3;
@@ -123,9 +123,10 @@ cubeGroup.quaternion.copy(HOME_ROT);
 let cubeMesh = null;
 let cubeEdges = null;
 let zoom = 1;
+const pan = new THREE.Vector2();       // camera offset in world units (for zoomed-in play)
 
 function faceTexture(N) {
-    const px = 512;
+    const px = N > 10 ? 1024 : 512;
     const c = document.createElement('canvas');
     c.width = c.height = px;
     const g = c.getContext('2d');
@@ -315,6 +316,7 @@ function loadLevel(level, saved = null) {
     cubeGroup.quaternion.copy(HOME_ROT);
     spin.set(0, 0);
     zoom = 1;
+    pan.set(0, 0);
     fitCamera();
 
     hudLevel.textContent = `Level ${level}`;
@@ -330,14 +332,14 @@ function loadLevel(level, saved = null) {
 function persist() {
     if (!board || levelDone) return;
     store.set(SAVE_KEY, JSON.stringify({
-        level: currentLevel, removed: [...board.removed], stars, reviveUsed,
+        v: GEN_VERSION, level: currentLevel, removed: [...board.removed], stars, reviveUsed,
     }));
 }
 
 function getSave() {
     try {
         const s = JSON.parse(store.get(SAVE_KEY, 'null'));
-        return s && s.level === currentLevel ? s : null;
+        return s && s.v === GEN_VERSION && s.level === currentLevel ? s : null;
     } catch (_) { return null; }
 }
 
@@ -503,18 +505,36 @@ function showPraise(word) {
     showPraise._t = setTimeout(() => praise.classList.add('hidden'), 950);
 }
 
-// ── Pointer input: rotate, zoom, tap ───────
+// ── Pointer input: rotate, zoom, pan, tap ──
+// 1 finger / left mouse: rotate (or tap)   2 fingers: pinch-zoom + pan
+// right mouse or shift+drag: pan           wheel: zoom
 const pointers = new Map();
 let dragStart = null;
-let pinchDist = 0;
+let pinch = null;                       // { dist, mid }
 const spin = new THREE.Vector2();       // angular velocity for inertia
 const raycaster = new THREE.Raycaster();
 
 function rotateBy(dx, dy) {
-    const speed = 0.0085 / zoom;
+    const speed = 0.0085 / Math.sqrt(zoom);
     const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * speed);
     const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * speed);
     cubeGroup.quaternion.premultiply(qx).premultiply(qy);
+}
+
+function maxZoom() { return board ? Math.max(2.4, board.N / 3.2) : 2.4; }
+
+function panBy(dx, dy) {
+    const vFov = THREE.MathUtils.degToRad(camera.fov);
+    const perPx = (2 * camera.position.z * Math.tan(vFov / 2)) / (zoom * window.innerHeight);
+    const lim = 1.25;
+    pan.x = Math.min(lim, Math.max(-lim, pan.x - dx * perPx));
+    pan.y = Math.min(lim, Math.max(-lim, pan.y + dy * perPx));
+    fitCamera();
+}
+
+function twoFingerState() {
+    const [a, b] = [...pointers.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -522,11 +542,13 @@ canvas.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     spin.set(0, 0);
     if (pointers.size === 1) {
-        dragStart = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+        dragStart = {
+            x: e.clientX, y: e.clientY, t: performance.now(), moved: false,
+            pan: e.button === 2 || e.shiftKey,
+        };
     } else if (pointers.size === 2) {
         dragStart = null;
-        const [a, b] = [...pointers.values()];
-        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinch = twoFingerState();
     }
 });
 
@@ -536,17 +558,19 @@ canvas.addEventListener('pointermove', (e) => {
     const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
-        const [a, b] = [...pointers.values()];
-        const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (pinchDist > 0) setZoom(zoom * (d / pinchDist));
-        pinchDist = d;
+        const now = twoFingerState();
+        if (pinch) {
+            if (pinch.dist > 0) setZoom(zoom * (now.dist / pinch.dist));
+            panBy(now.mid.x - pinch.mid.x, now.mid.y - pinch.mid.y);
+        }
+        pinch = now;
         return;
     }
     if (dragStart) {
         if (!dragStart.moved && Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 8) dragStart.moved = true;
         if (dragStart.moved) {
-            rotateBy(dx, dy);
-            spin.set(dx, dy);
+            if (dragStart.pan) panBy(dx, dy);
+            else { rotateBy(dx, dy); spin.set(dx, dy); }
         }
     }
 });
@@ -555,13 +579,13 @@ function endPointer(e) {
     if (!pointers.has(e.pointerId)) return;
     pointers.delete(e.pointerId);
     if (pointers.size === 0 && dragStart) {
-        if (!dragStart.moved && performance.now() - dragStart.t < 600) pick(e.clientX, e.clientY);
+        if (!dragStart.moved && !dragStart.pan && performance.now() - dragStart.t < 600) pick(e.clientX, e.clientY);
         dragStart = null;
     }
-    if (pointers.size < 2) pinchDist = 0;
+    if (pointers.size < 2) pinch = null;
 }
 canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); dragStart = null; });
+canvas.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); dragStart = null; pinch = null; });
 
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -569,7 +593,9 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 function setZoom(z) {
-    zoom = Math.min(2.4, Math.max(0.7, z));
+    zoom = Math.min(maxZoom(), Math.max(0.7, z));
+    // Drift back to centre as the player zooms out
+    if (zoom <= 1) pan.multiplyScalar(Math.max(0, zoom - 0.7) / 0.3);
     fitCamera();
 }
 
@@ -614,8 +640,10 @@ function fitCamera() {
     const vFov = THREE.MathUtils.degToRad(camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
     const dist = radius / Math.sin(Math.min(vFov, hFov) / 2);
-    camera.position.set(0, -0.08, dist / zoom);
-    camera.lookAt(0, -0.08, 0);
+    // Zoom narrows the lens instead of moving the camera, so it never clips into the cube
+    camera.zoom = zoom;
+    camera.position.set(pan.x, pan.y - 0.08, dist);
+    camera.lookAt(pan.x, pan.y - 0.08, 0);
     camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', fitCamera);
@@ -774,6 +802,7 @@ function init() {
             cubeGroup.quaternion.slerpQuaternions(from, HOME_ROT, 1 - Math.pow(1 - k, 3));
             if (k < 1) requestAnimationFrame(ease);
         })();
+        pan.set(0, 0);
         setZoom(1);
     });
 

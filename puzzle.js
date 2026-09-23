@@ -88,36 +88,90 @@ function shuffle(arr, rng) {
     return arr;
 }
 
+// Bump when the generator changes so old saved progress is discarded
+export const GEN_VERSION = 2;
+export const MAX_N = 20;
+
 // ── Difficulty curve ──
+// The cube grows quickly at first and keeps growing up to 20×20 per face
+// (≈ level 110 for normal levels, earlier for HARD / SUPER HARD).
 export function levelConfig(level) {
     const tier = level % 10 === 0 ? 2 : level % 5 === 0 ? 1 : 0;
-    const base = Math.min(3 + Math.floor((level - 1) / 4), 8);
-    const N = Math.min(base + tier, 10);
+    const base = 3 + Math.floor(1.7 * Math.sqrt(level - 1));
+    const N = Math.min(base + tier, MAX_N);
     return {
         level,
         N,
         tier,                                       // 0 normal, 1 hard, 2 super hard
         label: ['', 'HARD', 'SUPER HARD'][tier],
         minLen: 2,
-        maxLen: 3 + Math.floor(N * 0.9) + tier * 2,
+        // Arrows stay fairly short on big cubes so their count keeps rising
+        maxLen: Math.min(3 + Math.floor(N * 0.45), 10),
         turnChance: 0.35 + Math.min(level, 40) * 0.006,
         longRayBias: Math.min(0.15 + level * 0.02 + tier * 0.15, 0.85),
     };
 }
 
-// Build a level. Arrows are placed one by one so that each new arrow's exit
-// ray is clear of every arrow placed before it; removing them in reverse
-// placement order is therefore always possible → every level is solvable.
+// Build a level. Every arrow gets an order value `ord`; arrows can always be
+// removed from the highest ord down to the lowest. The invariant that makes
+// this work: any arrow sitting on another arrow's exit ray has a higher ord
+// (so it is gone by the time that arrow needs to leave) → every level is
+// solvable.
 export function generateLevel(level) {
     const cfg = levelConfig(level);
     const { N } = cfg;
     const rng = mulberry32(level * 7919 + 1234567);
     const occ = new Map();          // cell key → arrow id
+    const rayMax = new Map();       // cell key → highest ord of any exit ray crossing it
     const arrows = [];
     const surface = allCells(N);
+    let nextOrd = 0;
 
     const isFree = (c) => !occ.has(key(c.p));
+    const rayAt = (k) => (rayMax.has(k) ? rayMax.get(k) : -Infinity);
 
+    function add(path, ray, dir, ord) {
+        const id = arrows.length;
+        for (const c of path) occ.set(key(c.p), id);
+        for (const c of ray) {
+            const k = key(c.p);
+            if (!(rayAt(k) >= ord)) rayMax.set(k, ord);
+        }
+        arrows.push({ id, cells: path, dir, ord });
+    }
+
+    // Grow a body backwards from `head`. `accept(key)` vets each extra cell.
+    function growBody(head, d, banned, accept) {
+        const targetLen = cfg.minLen + Math.floor(rng() * (cfg.maxLen - cfg.minLen + 1));
+        const path = [{ p: head.p, n: head.n }];
+        const used = new Set([key(head.p)]);
+        let cur = head;
+        let back = neg(d);                   // direction we walk (away from head)
+        while (path.length < targetLen) {
+            const turns = tangents(cur.n).filter((t) => axisOf(t) !== axisOf(back));
+            // First step goes straight back so the head direction reads clearly
+            const order = path.length === 1 ? [back]
+                : rng() < cfg.turnChance ? shuffle(turns.slice(), rng).concat([back])
+                    : [back].concat(shuffle(turns.slice(), rng));
+            let next = null;
+            for (const t of order) {
+                const s = stepWrap(cur, t, N);
+                const k = key(s.p);
+                if (occ.has(k) || used.has(k) || banned.has(k) || !accept(k)) continue;
+                next = s;
+                break;
+            }
+            if (!next) break;
+            path.push({ p: next.p, n: next.n });
+            used.add(key(next.p));
+            cur = next;
+            back = next.d;
+        }
+        return path.length >= cfg.minLen ? path.reverse() : null;   // tail → head
+    }
+
+    // Phase 1: stack arrows on top — each new one is removed first, so its
+    // ray only has to be clear right now.
     function tryArrow(head) {
         let dirs = shuffle(tangents(head.n).slice(), rng);
         // Harder levels prefer heads that point across the face (long exit
@@ -128,45 +182,61 @@ export function generateLevel(level) {
         for (const d of dirs) {
             const ray = rayCells(head, d, N);
             if (!ray.every(isFree)) continue;
-            const banned = new Set(ray.map((c) => key(c.p)));
-            const targetLen = cfg.minLen + Math.floor(rng() * (cfg.maxLen - cfg.minLen + 1));
-
-            // Grow the body backwards from the head
-            const path = [{ p: head.p, n: head.n }];
-            const used = new Set([key(head.p)]);
-            let cur = head;
-            let back = neg(d);               // direction we walk (away from head)
-            while (path.length < targetLen) {
-                const options = [];
-                const straight = back;
-                const turns = tangents(cur.n).filter((t) => axisOf(t) !== axisOf(back));
-                // First step must go straight back so the head direction reads clearly
-                const order = path.length === 1 ? [straight]
-                    : rng() < cfg.turnChance ? shuffle(turns.slice(), rng).concat([straight])
-                        : [straight].concat(shuffle(turns.slice(), rng));
-                for (const t of order) {
-                    const s = stepWrap(cur, t, N);
-                    const k = key(s.p);
-                    if (occ.has(k) || used.has(k) || banned.has(k)) continue;
-                    options.push(s);
-                    break;
-                }
-                if (!options.length) break;
-                const s = options[0];
-                path.push({ p: s.p, n: s.n });
-                used.add(key(s.p));
-                cur = s;
-                back = s.d;
-            }
-            if (path.length < cfg.minLen) continue;
-
-            const id = arrows.length;
-            path.reverse();                  // tail → head
-            for (const c of path) occ.set(key(c.p), id);
-            arrows.push({ id, cells: path, dir: d });
+            const path = growBody(head, d, new Set(ray.map((c) => key(c.p))), () => true);
+            if (!path) continue;
+            add(path, ray, d, nextOrd++);
             return true;
         }
         return false;
+    }
+
+    // Phase 2: slot an arrow into a hole somewhere in the middle of the
+    // removal order: after every arrow whose ray crosses it, before every
+    // arrow standing on its own ray.
+    function tryInsert(head) {
+        for (const d of shuffle(tangents(head.n).slice(), rng)) {
+            const ray = rayCells(head, d, N);
+            let hi = Infinity;
+            for (const c of ray) {
+                const id = occ.get(key(c.p));
+                if (id !== undefined) hi = Math.min(hi, arrows[id].ord);
+            }
+            let lo = rayAt(key(head.p));
+            if (!(lo < hi)) continue;
+            const path = growBody(head, d, new Set(ray.map((c) => key(c.p))), (k) => {
+                if (!(rayAt(k) < hi)) return false;
+                lo = Math.max(lo, rayAt(k));
+                return true;
+            });
+            if (!path) continue;
+            const ord = hi === Infinity ? nextOrd++ : lo === -Infinity ? hi - 1 : (lo + hi) / 2;
+            add(path, ray, d, ord);
+            return true;
+        }
+        return false;
+    }
+
+    // Phase 3: grow tails into single leftover cells. A tail may take a cell
+    // only if every ray crossing it belongs to a lower-ord arrow.
+    const maxTail = cfg.maxLen + 4;
+    function growTails() {
+        let any = false;
+        for (const c of shuffle(surface.filter(isFree), rng)) {
+            const k = key(c.p);
+            for (const t of shuffle(tangents(c.n).slice(), rng)) {
+                const s = stepWrap(c, t, N);
+                const id = occ.get(key(s.p));
+                if (id === undefined) continue;
+                const a = arrows[id];
+                if (key(a.cells[0].p) !== key(s.p) || a.cells.length >= maxTail) continue;
+                if (!(rayAt(k) < a.ord)) continue;
+                a.cells.unshift({ p: c.p, n: c.n });
+                occ.set(k, id);
+                any = true;
+                break;
+            }
+        }
+        return any;
     }
 
     let placed = true;
@@ -175,6 +245,14 @@ export function generateLevel(level) {
         for (const c of shuffle(surface.filter(isFree), rng)) {
             if (isFree(c) && tryArrow(c)) placed = true;
         }
+    }
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const c of shuffle(surface.filter(isFree), rng)) {
+            if (isFree(c) && tryInsert(c)) changed = true;
+        }
+        while (growTails()) changed = true;
     }
     return { cfg, N, arrows };
 }

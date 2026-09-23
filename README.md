@@ -9,7 +9,8 @@ nothing is in the way. Clear every arrow to finish the level.
 ## How to play
 - **Tap** an arrow to launch it. It leaves over the edge of the face its head points to.
 - If another arrow is in its path, it crashes and you lose a ★. Lose all 3 and the level fails.
-- **Drag** to rotate the cube, **pinch / scroll** to zoom, **⟲** resets the view.
+- **Drag** to rotate the cube, **pinch / scroll** to zoom, **two fingers / right-drag** to move it, **⟲** resets the view.
+- The cube grows from 3×3 up to **20×20** per face, with 300+ arrows on the biggest levels.
 - **Hint** (20 coins) highlights an arrow that can leave safely.
 - Earn coins by finishing levels (more stars = more coins) and from the daily reward.
   Out of stars? Spend 50 coins once per level to continue.

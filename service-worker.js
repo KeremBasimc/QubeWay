@@ -1,6 +1,6 @@
 // Qube Way — Service Worker (offline support)
 // Network-first so new deploys show up immediately; cache is the offline fallback.
-const CACHE_NAME = 'qubeway-v1';
+const CACHE_NAME = 'qubeway-v2';
 const ASSETS = [
     './',
     './index.html',
