@@ -34,13 +34,41 @@
         <div class="menu-inner">
             <div class="menu-logo-wrap">
                 <div class="logo-scene">
+                    <!-- Face artwork: a 3×3 grid with arrows drawn like the in-game ones -->
+                    <svg class="lc-defs" width="0" height="0" aria-hidden="true">
+                        <defs>
+                            <g id="lc-grid">
+                                <path d="M20 0V60M40 0V60M0 20H60M0 40H60" stroke="rgba(120,140,190,0.18)" stroke-width="1" />
+                                <g fill="rgba(120,140,190,0.4)">
+                                    <circle cx="10" cy="10" r="1.3" /><circle cx="30" cy="10" r="1.3" /><circle cx="50" cy="10" r="1.3" />
+                                    <circle cx="10" cy="30" r="1.3" /><circle cx="30" cy="30" r="1.3" /><circle cx="50" cy="30" r="1.3" />
+                                    <circle cx="10" cy="50" r="1.3" /><circle cx="30" cy="50" r="1.3" /><circle cx="50" cy="50" r="1.3" />
+                                </g>
+                            </g>
+                            <g id="lc-a1" fill="none" stroke="currentColor" stroke-width="5.6" stroke-linecap="square" stroke-linejoin="miter">
+                                <path d="M10 50V10H30" /><path d="M30 50H50V30" />
+                                <polygon points="28.5,3.8 39.5,10 28.5,16.2" fill="currentColor" stroke="none" />
+                                <polygon points="43.8,31.5 50,20.5 56.2,31.5" fill="currentColor" stroke="none" />
+                            </g>
+                            <g id="lc-a2" fill="none" stroke="currentColor" stroke-width="5.6" stroke-linecap="square" stroke-linejoin="miter">
+                                <path d="M50 10H10V30" /><path d="M30 30V50H50" />
+                                <polygon points="3.8,28.5 10,39.5 16.2,28.5" fill="currentColor" stroke="none" />
+                                <polygon points="48.5,43.8 59.5,50 48.5,56.2" fill="currentColor" stroke="none" />
+                            </g>
+                            <g id="lc-a3" fill="none" stroke="currentColor" stroke-width="5.6" stroke-linecap="square" stroke-linejoin="miter">
+                                <path d="M10 50V10" /><path d="M30 50V30H50" />
+                                <polygon points="3.8,11.5 10,0.5 16.2,11.5" fill="currentColor" stroke="none" />
+                                <polygon points="48.5,23.8 59.5,30 48.5,36.2" fill="currentColor" stroke="none" />
+                            </g>
+                        </defs>
+                    </svg>
                     <div class="logo-cube">
-                        <div class="lc-face lc-front">➜</div>
-                        <div class="lc-face lc-back">➜</div>
-                        <div class="lc-face lc-right">⬆</div>
-                        <div class="lc-face lc-left">⬇</div>
-                        <div class="lc-face lc-top">⬅</div>
-                        <div class="lc-face lc-bottom">➜</div>
+                        <svg class="lc-face lc-front" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a1" /></svg>
+                        <svg class="lc-face lc-back" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a3" transform="rotate(180 30 30)" /></svg>
+                        <svg class="lc-face lc-right" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a2" /></svg>
+                        <svg class="lc-face lc-left" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a1" transform="rotate(90 30 30)" /></svg>
+                        <svg class="lc-face lc-top" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a3" /></svg>
+                        <svg class="lc-face lc-bottom" viewBox="0 0 60 60"><use href="#lc-grid" /><use href="#lc-a2" transform="rotate(-90 30 30)" /></svg>
                     </div>
                 </div>
                 <h1 class="menu-title">Qube <span>Way</span></h1>
@@ -186,6 +214,19 @@
             <p class="daily-streak" id="daily-streak">Day 1 streak</p>
             <p class="coins-earned" id="daily-reward-amt">+50 coins</p>
             <button class="btn-primary" id="daily-close">Collect</button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         GIFT LINK POPUP (?gift=CODE)
+    ═══════════════════════════════════════ -->
+    <div id="gift-popup" class="overlay hidden">
+        <div class="card daily-card">
+            <div class="daily-emoji">🎁</div>
+            <h2 id="gift-title">Gift Received!</h2>
+            <p class="daily-streak" id="gift-msg">Enjoy your coins!</p>
+            <p class="coins-earned" id="gift-amt">+500 coins</p>
+            <button class="btn-primary" id="gift-close">Collect</button>
         </div>
     </div>
 

@@ -9,7 +9,7 @@ import { Board, stepWrap, GEN_VERSION } from './puzzle.js';
 const MAX_STARS = 3;
 const SAVE_KEY = 'qw_savegame';
 const HINT_COST = 20;
-const REVIVE_COST = 50;
+const REVIVE_COSTS = [50, 100, 200];   // price of the 1st, 2nd, 3rd continue in a level
 const DAILY_REWARD = 50;
 const LEVEL_REWARD = 10;
 const STAR_REWARD = 5;
@@ -102,6 +102,7 @@ const settingsPanel = $('settings-panel');
 const settingsDrawer = $('settings-drawer');
 const settingsBackdrop = $('settings-backdrop');
 const dailyPopup = $('daily-popup');
+const giftPopup = $('gift-popup');
 
 $('hint-cost').textContent = HINT_COST;
 
@@ -270,7 +271,7 @@ let board = null;
 let arrowViews = [];          // per arrow id: { mesh, track, busy }
 let anims = [];
 let stars = MAX_STARS;
-let reviveUsed = false;
+let revives = 0;              // continues bought in this level
 let levelDone = false;
 let streak = 0;               // consecutive clean removals, for praise words
 let hintTimer = null;
@@ -292,7 +293,7 @@ function loadLevel(level, saved = null) {
     board = new Board(level);
     buildCube(board.N);
     stars = MAX_STARS;
-    reviveUsed = false;
+    revives = 0;
     levelDone = false;
     streak = 0;
     stopHint();
@@ -300,7 +301,7 @@ function loadLevel(level, saved = null) {
     if (saved && saved.level === level) {
         for (const id of saved.removed || []) if (board.arrows[id]) board.remove(board.arrows[id]);
         stars = Math.max(1, Math.min(MAX_STARS, saved.stars || MAX_STARS));
-        reviveUsed = !!saved.reviveUsed;
+        revives = Math.min(REVIVE_COSTS.length, saved.revives ?? (saved.reviveUsed ? 1 : 0));
     }
 
     for (const a of board.arrows) {
@@ -332,7 +333,7 @@ function loadLevel(level, saved = null) {
 function persist() {
     if (!board || levelDone) return;
     store.set(SAVE_KEY, JSON.stringify({
-        v: GEN_VERSION, level: currentLevel, removed: [...board.removed], stars, reviveUsed,
+        v: GEN_VERSION, level: currentLevel, removed: [...board.removed], stars, revives,
     }));
 }
 
@@ -459,8 +460,12 @@ function onLevelComplete() {
 function onOutOfStars() {
     if (levelDone) return;
     $('fail-left').textContent = `${board.remaining} arrow${board.remaining === 1 ? '' : 's'} left`;
-    reviveBtn.textContent = `♥ Continue +1★ – ${REVIVE_COST} coins`;
-    reviveBtn.classList.toggle('hidden', reviveUsed || coins < REVIVE_COST);
+    const cost = REVIVE_COSTS[revives];
+    if (cost !== undefined) {
+        const left = REVIVE_COSTS.length - revives;
+        reviveBtn.textContent = `♥ Continue +1★ – ${cost} coins (${left} left)`;
+    }
+    reviveBtn.classList.toggle('hidden', cost === undefined || coins < cost);
     failOverlay.classList.remove('hidden');
     store.del(SAVE_KEY);
     Audio.fail();
@@ -468,10 +473,11 @@ function onOutOfStars() {
 }
 
 function revive() {
-    if (reviveUsed || coins < REVIVE_COST) return;
-    coins -= REVIVE_COST;
+    const cost = REVIVE_COSTS[revives];
+    if (cost === undefined || coins < cost) return;
+    coins -= cost;
     saveCoins();
-    reviveUsed = true;
+    revives++;
     stars = 1;
     failOverlay.classList.add('hidden');
     Audio.click();
@@ -775,6 +781,59 @@ function checkDailyReward() {
     dailyPopup.classList.remove('hidden');
 }
 
+// ── Gift links ─────────────────────────────
+// index.html?gift=CODE adds coins once per device. Only SHA-256 hashes of the
+// (upper-cased) codes are shipped, so the codes can't be read from the source.
+// Get a hash for a new code with `await __qw.giftHash('CODE')` in the console.
+const GIFT_CODES = {
+    '83473cbcc622e6d1b6802def5fcfa05709f358283589648ca13d237b158a505e': 10,
+    '8b1c1fa840566d752508ec37b0479ac8944a3626d75456742220955119bc7f83': 50,
+    '9fe837cde36f244cf688e1347034f07172b5186cdcbab9aadfc1a5219cc82806': 100,
+    '4a8b936ef024a064c1401646901fb242ec4af82498bb3186403c207e5a68acde': 250,
+    '4bd32bc3de9102ea192720d2f6f217d5037916676d4e9bf68c8d842029afca64': 500,
+};
+
+async function giftHash(code) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code.trim().toUpperCase()));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function checkGift() {
+    const url = new URL(location.href);
+    const code = url.searchParams.get('gift');
+    if (!code) return;
+    // Drop the code from the address bar so it doesn't get bookmarked or reshared
+    url.searchParams.delete('gift');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+
+    let hash = null;
+    try { hash = await giftHash(code); } catch (_) {}
+    let used = [];
+    try { used = JSON.parse(store.get('qw_gifts', '[]')) || []; } catch (_) {}
+    const amount = hash ? GIFT_CODES[hash] : undefined;
+
+    if (amount === undefined) {
+        showGiftPopup('Invalid Gift Link', 'This gift code doesn\'t exist.', '', 'OK');
+    } else if (used.includes(hash)) {
+        showGiftPopup('Already Collected', 'This gift was already collected on this device.', '', 'OK');
+    } else {
+        used.push(hash);
+        store.set('qw_gifts', JSON.stringify(used));
+        coins += amount;
+        saveCoins();
+        showGiftPopup('Gift Received!', 'Enjoy your coins!', `+${amount} coins`, 'Collect');
+    }
+}
+
+function showGiftPopup(title, msg, amount, button) {
+    $('gift-title').textContent = title;
+    $('gift-msg').textContent = msg;
+    $('gift-amt').textContent = amount;
+    $('gift-amt').classList.toggle('hidden', !amount);
+    $('gift-close').textContent = button;
+    giftPopup.classList.remove('hidden');
+}
+
 function init() {
     $('play-btn').addEventListener('click', () => startPlaying(false));
     $('restart-level-link').addEventListener('click', () => startPlaying(true));
@@ -829,6 +888,7 @@ function init() {
     toggleHaptic.addEventListener('change', () => { settings.haptic = toggleHaptic.checked; store.set('qw_haptic', settings.haptic); });
 
     $('daily-close').addEventListener('click', () => { dailyPopup.classList.add('hidden'); Audio.click(); });
+    $('gift-close').addEventListener('click', () => { giftPopup.classList.add('hidden'); Audio.click(); });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Prepare the current level (resuming any saved progress) behind the menu
@@ -836,6 +896,7 @@ function init() {
     fitCamera();
     showMainMenu();
     checkDailyReward();
+    checkGift();
     requestAnimationFrame(frame);
 }
 
@@ -843,6 +904,7 @@ function init() {
 window.__qw = {
     get board() { return board; },
     tap: (id) => tapArrow(board.arrows[id]),
+    giftHash,
     camera, cubeGroup,
 };
 

@@ -13,8 +13,15 @@ nothing is in the way. Clear every arrow to finish the level.
 - The cube grows from 3×3 up to **20×20** per face, with 300+ arrows on the biggest levels.
 - **Hint** (20 coins) highlights an arrow that can leave safely.
 - Earn coins by finishing levels (more stars = more coins) and from the daily reward.
-  Out of stars? Spend 50 coins once per level to continue.
+  Out of stars? Buy a continue for 50, then 100, then 200 coins (up to 3 per level).
 - Every 5th level is **HARD** and every 10th is **SUPER HARD** (bigger cube, longer arrows).
+
+## Gift links
+Send a player `https://kerembasimc.github.io/QubeWay/?gift=CODE` to give them coins.
+Each code works once per device. Codes are stored only as SHA-256 hashes in `GIFT_CODES`
+(`game.js`). To add one, run `await __qw.giftHash('NEWCODE')` in the browser console on
+the game page and add `'<hash>': <coins>` to `GIFT_CODES`. Anyone who has the link can
+use it, so treat a code like a coupon.
 
 ## Tech
 - Plain HTML/CSS/JS with ES modules and no build step. Rendering uses [three.js](https://threejs.org/)
